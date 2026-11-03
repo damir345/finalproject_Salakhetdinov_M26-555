@@ -129,3 +129,88 @@ class User:
             raise ValueError(f"В данных пользователя нет поля {exc}") from exc
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Некорректные данные пользователя: {exc}") from exc
+
+
+class Wallet:
+    """Кошелёк пользователя для одной конкретной валюты."""
+
+    def __init__(self, currency_code: str, balance: float = 0.0) -> None:
+        if not currency_code or not currency_code.strip():
+            raise ValueError("Код валюты не может быть пустым.")
+        self._currency_code = currency_code.strip().upper()
+        self._balance = 0.0
+        self.balance = balance  # сеттер проверит тип и неотрицательность
+
+    # --- currency_code (только чтение) ---
+
+    @property
+    def currency_code(self) -> str:
+        return self._currency_code
+
+    # --- balance (геттер + сеттер с проверками) ---
+
+    @property
+    def balance(self) -> float:
+        return self._balance
+
+    @balance.setter
+    def balance(self, value: float) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise TypeError("Баланс должен быть числом.")
+        if value < 0:
+            raise ValueError("Баланс не может быть отрицательным.")
+        self._balance = float(value)
+
+    # --- Методы из задания ---
+
+    def deposit(self, amount: float) -> None:
+        """Пополняет баланс на amount (положительное число)."""
+        self._validate_amount(amount)
+        self.balance = self._balance + amount
+
+    def withdraw(self, amount: float) -> None:
+        """Снимает amount, если баланс позволяет."""
+        self._validate_amount(amount)
+        if amount > self._balance:
+            raise ValueError(
+                f"Недостаточно средств: баланс {self._balance}, запрошено {amount}."
+            )
+        self.balance = self._balance - amount
+
+    def get_balance_info(self) -> dict:
+        """Возвращает информацию о текущем балансе."""
+        return {
+            "currency_code": self._currency_code,
+            "balance": self._balance,
+        }
+
+    # --- Внутренние проверки ---
+
+    @staticmethod
+    def _validate_amount(amount: float) -> None:
+        if isinstance(amount, bool) or not isinstance(amount, (int, float)):
+            raise TypeError("Сумма должна быть числом.")
+        if amount <= 0:
+            raise ValueError("Сумма должна быть положительным числом.")
+
+    # --- Сериализация ---
+
+    def to_dict(self) -> dict:
+        """Словарь для хранения в портфеле (формат из задания)."""
+        return {
+            "currency_code": self._currency_code,
+            "balance": self._balance,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Wallet":
+        """Восстанавливает кошелёк из словаря."""
+        try:
+            return cls(
+                currency_code=data["currency_code"],
+                balance=data["balance"],
+            )
+        except KeyError as exc:
+            raise ValueError(f"В данных кошелька нет поля {exc}") from exc
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Некорректные данные кошелька: {exc}") from exc
