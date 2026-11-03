@@ -1,7 +1,7 @@
 [project]
 name = "finalproject-salakhetdinov-m26-555"
 version = "0.1.0"
-description = "Add your description here"
+description = "Консольное приложение, имитирующее работу валютного кошелька"
 readme = "README.md"
 authors = [
     { name = "Damir Salakhetdinov", email = "saldam@inbox.ru" }
@@ -12,11 +12,14 @@ dependencies = [
 ]
 
 [project.scripts]
-finalproject-salakhetdinov-m26-555 = "finalproject_salakhetdinov_m26_555:main"
+finalproject-salakhetdinov-m26-555 = "main:main"
 
 [build-system]
-requires = ["uv_build>=0.13.5,<0.14.0"]
-build-backend = "uv_build"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["valutatrade_hub"]
 
 [dependency-groups]
 dev = [
@@ -25,3 +28,6 @@ dev = [
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
