@@ -214,3 +214,124 @@ class Wallet:
             raise ValueError(f"В данных кошелька нет поля {exc}") from exc
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Некорректные данные кошелька: {exc}") from exc
+
+
+# Фиктивные курсы относительно USD (1 единица валюты = X USD).
+EXCHANGE_RATES: dict[str, float] = {
+    "USD": 1.0,
+    "EUR": 1.08,
+    "GBP": 1.27,
+    "BTC": 60000.0,
+    "ETH": 3000.0,
+}
+
+
+class Portfolio:
+    """Набор кошельков одного пользователя."""
+
+    def __init__(
+        self,
+        user: User,
+        wallets: dict[str, Wallet] | None = None,
+    ) -> None:
+        self._user = user
+        self._wallets: dict[str, Wallet] = {}
+        if wallets:
+            for code, wallet in wallets.items():
+                if code != wallet.currency_code:
+                    raise ValueError(
+                        f"Ключ {code!r} не совпадает с кодом кошелька "
+                        f"{wallet.currency_code!r}."
+                    )
+                self._wallets[code] = wallet
+
+    # --- user (только чтение) ---
+
+    @property
+    def user(self) -> User:
+        return self._user
+
+    @property
+    def user_id(self) -> int:
+        return self._user.user_id
+
+    # --- wallets (только чтение, копия словаря) ---
+
+    @property
+    def wallets(self) -> dict[str, Wallet]:
+        return dict(self._wallets)
+
+    # --- Методы из задания ---
+
+    def add_currency(self, currency_code: str) -> Wallet:
+        """
+        Добавляет кошелёк в портфель и возвращает его.
+
+        Если кошелёк с таким кодом уже есть — возвращает существующий
+        (идемпотентно, без создания дубликата).
+        """
+        code = currency_code.strip().upper()
+        if not code:
+            raise ValueError("Код валюты не может быть пустым.")
+        if code in self._wallets:
+            return self._wallets[code]
+        wallet = Wallet(code)
+        self._wallets[code] = wallet
+        return wallet
+
+    def get_wallet(self, currency_code: str) -> Wallet:
+        """Возвращает кошелёк по коду валюты."""
+        code = currency_code.strip().upper()
+        if code not in self._wallets:
+            raise KeyError(f"В портфеле нет кошелька {code!r}.")
+        return self._wallets[code]
+
+    def get_total_value(self, base_currency: str = "USD") -> float:
+        """
+        Возвращает общую стоимость всех кошельков в base_currency.
+
+        Курсы берутся из EXCHANGE_RATES (относительно USD).
+        Если курса нет — ValueError.
+        """
+        base = base_currency.strip().upper()
+        if base not in EXCHANGE_RATES:
+            raise ValueError(f"Нет курса для базовой валюты {base!r}.")
+
+        base_rate = EXCHANGE_RATES[base]
+        total = 0.0
+        for code, wallet in self._wallets.items():
+            if code not in EXCHANGE_RATES:
+                raise ValueError(f"Нет курса для валюты {code!r}.")
+            total += wallet.balance * EXCHANGE_RATES[code] / base_rate
+        return total
+
+    # --- Сериализация ---
+
+    def to_dict(self) -> dict:
+        """Словарь для portfolios.json (формат из задания)."""
+        return {
+            "user_id": self._user.user_id,
+            "wallets": {
+                code: {"balance": wallet.balance}
+                for code, wallet in self._wallets.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict, user: User) -> "Portfolio":
+        """
+        Восстанавливает портфель из словаря.
+
+        Нужен объект User, потому что портфель ссылается на пользователя.
+        """
+        try:
+            wallets_data = data["wallets"]
+            wallets = {
+                code: Wallet(code, payload["balance"])
+                for code, payload in wallets_data.items()
+            }
+            return cls(user=user, wallets=wallets)
+        except KeyError as exc:
+            raise ValueError(f"В данных портфеля нет поля {exc}") from exc
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Некорректные данные портфеля: {exc}") from exc
