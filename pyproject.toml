@@ -1,0 +1,27 @@
+[project]
+name = "finalproject-salakhetdinov-m26-555"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Damir Salakhetdinov", email = "saldam@inbox.ru" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "prettytable>=3.18.0",
+]
+
+[project.scripts]
+finalproject-salakhetdinov-m26-555 = "finalproject_salakhetdinov_m26_555:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 88
