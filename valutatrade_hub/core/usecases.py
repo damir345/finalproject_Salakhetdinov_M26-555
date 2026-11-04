@@ -148,23 +148,42 @@ def buy(user: User, currency_code: str, amount: float) -> dict:
 
 
 def sell(user: User, currency_code: str, amount: float) -> dict:
+    """
+    Продаёт amount единиц currency_code за USD.
+
+    Возвращает словарь с деталями операции, включая old_balance/new_balance.
+    """
     if amount <= 0:
-        raise ValueError("Сумма должна быть положительным числом.")
+        raise ValueError("'amount' должен быть положительным числом")
     code = currency_code.strip().upper()
+    if not code:
+        raise ValueError("Код валюты не может быть пустым")
     if code == "USD":
-        raise ValueError("Нельзя продавать USD за USD.")
+        raise ValueError("Нельзя продавать USD за USD")
 
     portfolio = get_portfolio(user)
-    rate_info = get_rate(code, "USD")
+    if code not in portfolio.wallets:
+        raise ValueError(
+            f"У вас нет кошелька {code!r}. "
+            f"Добавьте валюту: она создаётся автоматически при первой покупке."
+        )
+
+    try:
+        rate_info = get_rate(code, "USD")
+    except ValueError as exc:
+        raise ValueError(f"Не удалось получить курс для {code}→USD") from exc
+
     rate = rate_info["rate"]
     proceeds = amount * rate
 
     target = portfolio.get_wallet(code)
     if target.balance < amount:
         raise ValueError(
-            f"Недостаточно {code}: нужно {amount}, на балансе {target.balance}."
+            f"Недостаточно средств: доступно {target.balance:.4f} {code}, "
+            f"требуется {amount:.4f} {code}"
         )
 
+    old_balance = target.balance
     usd_wallet = portfolio.add_currency("USD")
     target.withdraw(amount)
     usd_wallet.deposit(proceeds)
@@ -176,6 +195,8 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
         "amount": amount,
         "rate": rate,
         "proceeds_usd": proceeds,
+        "old_balance": old_balance,
+        "new_balance": target.balance,
     }
 
 

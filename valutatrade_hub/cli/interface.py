@@ -79,11 +79,14 @@ def _cmd_login(session: Session, args: list[str]) -> None:
     print(f"Вы вошли как {user.username!r}")
 
 
-def _fmt_amount(value: float) -> str:
-    """2 знака для целых значений, 4 — для дробных."""
-    if value == int(value):
-        return f"{value:.2f}"
-    return f"{value:.4f}"
+CRYPTO_CODES = {"BTC", "ETH"}
+
+
+def _fmt_amount(value: float, code: str = "") -> str:
+    """2 знака для фиата, 4 — для криптовалюты."""
+    if code in CRYPTO_CODES:
+        return f"{value:.4f}"
+    return f"{value:.2f}"
 
 
 def _cmd_show_portfolio(session: Session, args: list[str]) -> None:
@@ -106,7 +109,7 @@ def _cmd_show_portfolio(session: Session, args: list[str]) -> None:
     for code, wallet in sorted(wallets.items()):
         value = usecases.get_wallet_value_in(wallet, base)
         total += value
-        print(f"- {code}: {_fmt_amount(wallet.balance)}  → {value:.2f} {base}")
+        print(f"- {code}: {_fmt_amount(wallet.balance, code)}  → {value:.2f} {base}")
     print("-" * 33)
     print(f"ИТОГО: {total:.2f} {base}")
 
@@ -137,19 +140,26 @@ def _cmd_buy(session: Session, args: list[str]) -> None:
 
 def _cmd_sell(session: Session, args: list[str]) -> None:
     user = _require_login(session)
-    if len(args) != 2:
-        raise ValueError("Использование: sell <currency> <amount>")
-    code = args[0]
+    flags = _parse_flags(args, required={"currency", "amount"})
+    code = flags["currency"]
     try:
-        amount = float(args[1])
+        amount = float(flags["amount"])
     except ValueError:
-        raise ValueError(f"Некорректная сумма: {args[1]!r}") from None
+        raise ValueError(f"'amount' должен быть числом: {flags['amount']!r}") from None
+
     result = usecases.sell(user, code, amount)
+
     print(
-        f"Продано {result['amount']} {result['currency_code']} "
-        f"по курсу {result['rate']:.4f} USD "
-        f"(получено {result['proceeds_usd']:.2f} USD)."
+        f"Продажа выполнена: {result['amount']:.4f} "
+        f"{result['currency_code']} по курсу {result['rate']:.2f} "
+        f"USD/{result['currency_code']}"
     )
+    print("Изменения в портфеле:")
+    print(
+        f"- {result['currency_code']}: было {result['old_balance']:.4f} "
+        f"→ стало {result['new_balance']:.4f}"
+    )
+    print(f"Оценочная выручка: {result['proceeds_usd']:.2f} USD")
 
 
 def _cmd_get_rate(session: Session, args: list[str]) -> None:
