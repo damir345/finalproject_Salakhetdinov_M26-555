@@ -3,6 +3,10 @@
 import shlex
 
 from valutatrade_hub.core import usecases
+from valutatrade_hub.core.exceptions import (
+    CurrencyNotFoundError,
+    InsufficientFundsError,
+)
 from valutatrade_hub.core.models import User
 from valutatrade_hub.core.utils import STUB_RATES_USD
 
@@ -220,6 +224,11 @@ def run() -> None:
 
         try:
             handler(session, args)
+        except InsufficientFundsError as exc:
+            print(f"Ошибка: {exc}")
+        except CurrencyNotFoundError as exc:
+            print(f"Ошибка: {exc}")
+            print("Подсказка: используйте 'get-rate --help' или проверьте код валюты.")
         except ValueError as exc:
             print(f"Ошибка: {exc}")
         except Exception as exc:  # noqa: BLE001

@@ -78,13 +78,11 @@ def get_currency(code: str) -> Currency:
     """Возвращает валюту по коду. Бросает CurrencyNotFoundError, если нет."""
     normalized = code.strip().upper()
     if not normalized:
-        raise CurrencyNotFoundError("Код валюты не может быть пустым.")
+        raise CurrencyNotFoundError(code)
     try:
         return _CURRENCY_REGISTRY[normalized]
     except KeyError as exc:
-        raise CurrencyNotFoundError(
-            f"Валюта с кодом {normalized!r} не найдена."
-        ) from exc
+        raise CurrencyNotFoundError(normalized) from exc
 
 
 def list_currencies() -> list[Currency]:

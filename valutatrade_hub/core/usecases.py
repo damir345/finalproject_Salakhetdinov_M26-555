@@ -184,11 +184,11 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
     proceeds = amount * rate
 
     target = portfolio.get_wallet(code)
-    if target.balance < amount:
-        raise ValueError(
-            f"Недостаточно средств: доступно {target.balance:.4f} {code}, "
-            f"требуется {amount:.4f} {code}"
-        )
+    old_balance = target.balance
+    usd_wallet = portfolio.add_currency("USD")
+    target.withdraw(amount)  # бросит InsufficientFundsError, если не хватает
+    usd_wallet.deposit(proceeds)
+    save_portfolio(portfolio)
 
     old_balance = target.balance
     usd_wallet = portfolio.add_currency("USD")

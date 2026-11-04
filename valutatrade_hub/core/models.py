@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from valutatrade_hub.core.exceptions import InsufficientFundsError
 from valutatrade_hub.core.utils import generate_salt, hash_password
 
 
@@ -172,9 +173,7 @@ class Wallet:
         """Снимает amount, если баланс позволяет."""
         self._validate_amount(amount)
         if amount > self._balance:
-            raise ValueError(
-                f"Недостаточно средств: баланс {self._balance}, запрошено {amount}."
-            )
+            raise InsufficientFundsError(self._balance, amount, self._currency_code)
         self.balance = self._balance - amount
 
     def get_balance_info(self) -> dict:
