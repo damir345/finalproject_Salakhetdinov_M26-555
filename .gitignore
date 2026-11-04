@@ -17,3 +17,6 @@ wheels/
 # Runtime data (users, portfolios, rates cache)
 data/*.json
 !data/.gitkeep
+
+# Logs
+logs/

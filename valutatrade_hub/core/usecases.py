@@ -9,6 +9,7 @@ from valutatrade_hub.core.utils import (
     read_json,
     write_json,
 )
+from valutatrade_hub.decorators import log_action
 from valutatrade_hub.infra.settings import SettingsLoader
 
 
@@ -28,6 +29,7 @@ def _save_users(users: list[dict]) -> None:
     write_json(USERS_FILE, users)
 
 
+@log_action(action="REGISTER")
 def register(username: str, password: str) -> User:
     """Регистрирует нового пользователя и сохраняет в users.json."""
     users = _load_users()
@@ -48,6 +50,7 @@ def register(username: str, password: str) -> User:
     return user
 
 
+@log_action(action="LOGIN")
 def login(username: str, password: str) -> User:
     """Проверяет логин/пароль и возвращает User."""
     users = _load_users()
@@ -116,9 +119,10 @@ def get_rate_info(from_currency: str, to_currency: str | None = None) -> dict:
 # --- Buy / Sell ---
 
 
+@log_action(action="BUY", verbose=True)
 def buy(user: User, currency_code: str, amount: float) -> dict:
     """
-    Покупает amount единиц currency_code за USD.
+    Покупает amount единиц currency_code за валюту.
 
     Возвращает словарь с деталями операции, включая old_balance/new_balance.
     """
@@ -127,10 +131,10 @@ def buy(user: User, currency_code: str, amount: float) -> dict:
     code = currency_code.strip().upper()
     if not code:
         raise ValueError("Код валюты не может быть пустым")
-    if code == "USD":
-        raise ValueError("Нельзя покупать USD за USD")
-
     base = _base_currency()
+    if code == base:
+        raise ValueError(f"Нельзя покупать {base} за {base}")
+
     portfolio = get_portfolio(user)
     try:
         rate_info = get_rate(code, base)
@@ -155,15 +159,17 @@ def buy(user: User, currency_code: str, amount: float) -> dict:
         "currency_code": code,
         "amount": amount,
         "rate": rate,
+        "base": base,
         "cost_usd": cost,
         "old_balance": old_balance,
         "new_balance": target.balance,
     }
 
 
+@log_action(action="SELL", verbose=True)
 def sell(user: User, currency_code: str, amount: float) -> dict:
     """
-    Продаёт amount единиц currency_code за USD.
+    Продаёт amount единиц currency_code за валюту.
 
     Возвращает словарь с деталями операции, включая old_balance/new_balance.
     """
@@ -172,10 +178,10 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
     code = currency_code.strip().upper()
     if not code:
         raise ValueError("Код валюты не может быть пустым")
-    if code == "USD":
-        raise ValueError("Нельзя продавать USD за USD")
-
     base = _base_currency()
+    if code == base:
+        raise ValueError(f"Нельзя продавать {base} за {base}")
+
     portfolio = get_portfolio(user)
     if code not in portfolio.wallets:
         raise ValueError(
@@ -203,6 +209,7 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
         "currency_code": code,
         "amount": amount,
         "rate": rate,
+        "base": base,
         "proceeds_usd": proceeds,
         "old_balance": old_balance,
         "new_balance": target.balance,
