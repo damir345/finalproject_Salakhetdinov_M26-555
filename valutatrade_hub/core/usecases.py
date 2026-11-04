@@ -48,8 +48,8 @@ def login(username: str, password: str) -> User:
             user = User.from_dict(data)
             if user.verify_password(password):
                 return user
-            raise ValueError("Неверный пароль.")
-    raise ValueError(f"Пользователь {username!r} не найден.")
+            raise ValueError("Неверный пароль")
+    raise ValueError(f"Пользователь {username!r} не найден")
 
 
 # --- Портфели ---

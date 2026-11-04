@@ -74,11 +74,10 @@ def _cmd_register(session: Session, args: list[str]) -> None:
 
 
 def _cmd_login(session: Session, args: list[str]) -> None:
-    if len(args) != 2:
-        raise ValueError("Использование: login <username> <password>")
-    user = usecases.login(args[0], args[1])
+    flags = _parse_flags(args, required={"username", "password"})
+    user = usecases.login(flags["username"], flags["password"])
     session.user = user
-    print(f"Вход выполнен: {user.username!r} (#{user.user_id}).")
+    print(f"Вы вошли как {user.username!r}")
 
 
 def _cmd_show_portfolio(session: Session, args: list[str]) -> None:
