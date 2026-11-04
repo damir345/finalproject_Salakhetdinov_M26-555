@@ -1,5 +1,8 @@
+from valutatrade_hub.cli.interface import run
+
+
 def main() -> None:
-    print("ValutaTrade Hub is running!")
+    run()
 
 
 if __name__ == "__main__":
