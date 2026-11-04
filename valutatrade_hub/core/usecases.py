@@ -95,7 +95,14 @@ def save_portfolio(portfolio: Portfolio) -> None:
 
 def get_rate_info(from_currency: str, to_currency: str = "USD") -> dict:
     """Обёртка над utils.get_rate (для CLI)."""
-    return get_rate(from_currency, to_currency)
+    frm = from_currency.strip().upper()
+    to = to_currency.strip().upper()
+    try:
+        return get_rate(frm, to)
+    except ValueError as exc:
+        raise ValueError(
+            f"Курс {frm}→{to} недоступен. Повторите попытку позже."
+        ) from exc
 
 
 # --- Buy / Sell ---

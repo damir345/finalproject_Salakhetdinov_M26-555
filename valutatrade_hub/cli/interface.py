@@ -163,15 +163,16 @@ def _cmd_sell(session: Session, args: list[str]) -> None:
 
 
 def _cmd_get_rate(session: Session, args: list[str]) -> None:
-    if len(args) not in (1, 2):
-        raise ValueError("Использование: get-rate <from> [to]")
-    frm = args[0]
-    to = args[1] if len(args) == 2 else "USD"
+    flags = _parse_flags(args, required={"from", "to"})
+    frm = flags["from"]
+    to = flags["to"]
     info = usecases.get_rate_info(frm, to)
+    reverse = usecases.get_rate_info(to, frm)
+    updated = info["updated_at"].replace("T", " ").replace("+00:00", "")
     print(
-        f"1 {info['from']} = {info['rate']:.6f} {info['to']} "
-        f"(обновлено {info['updated_at']})."
+        f"Курс {info['from']}→{info['to']}: {info['rate']:.8f} (обновлено: {updated})"
     )
+    print(f"Обратный курс {reverse['from']}→{reverse['to']}: {reverse['rate']:.2f}")
 
 
 COMMANDS = {
