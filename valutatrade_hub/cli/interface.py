@@ -113,19 +113,26 @@ def _cmd_show_portfolio(session: Session, args: list[str]) -> None:
 
 def _cmd_buy(session: Session, args: list[str]) -> None:
     user = _require_login(session)
-    if len(args) != 2:
-        raise ValueError("Использование: buy <currency> <amount>")
-    code = args[0]
+    flags = _parse_flags(args, required={"currency", "amount"})
+    code = flags["currency"]
     try:
-        amount = float(args[1])
+        amount = float(flags["amount"])
     except ValueError:
-        raise ValueError(f"Некорректная сумма: {args[1]!r}") from None
+        raise ValueError(f"'amount' должен быть числом: {flags['amount']!r}") from None
+
     result = usecases.buy(user, code, amount)
+
     print(
-        f"Куплено {result['amount']} {result['currency_code']} "
-        f"по курсу {result['rate']:.4f} USD "
-        f"(списано {result['cost_usd']:.2f} USD)."
+        f"Покупка выполнена: {result['amount']:.4f} "
+        f"{result['currency_code']} по курсу {result['rate']:.2f} "
+        f"USD/{result['currency_code']}"
     )
+    print("Изменения в портфеле:")
+    print(
+        f"- {result['currency_code']}: было {result['old_balance']:.4f} "
+        f"→ стало {result['new_balance']:.4f}"
+    )
+    print(f"Оценочная стоимость покупки: {result['cost_usd']:.2f} USD")
 
 
 def _cmd_sell(session: Session, args: list[str]) -> None:
