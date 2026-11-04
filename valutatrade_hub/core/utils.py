@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from valutatrade_hub.infra.settings import SettingsLoader
+
 # --- Хеширование пароля ---
 
 
@@ -22,14 +24,12 @@ def hash_password(password: str, salt: str) -> str:
 
 # --- Пути к файлам данных ---
 
-# utils.py лежит в valutatrade_hub/core/:
-# parents[0] = core/, parents[1] = valutatrade_hub/, parents[2] = корень проекта
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data"
+_settings = SettingsLoader()
 
-USERS_FILE = DATA_DIR / "users.json"
-PORTFOLIOS_FILE = DATA_DIR / "portfolios.json"
-RATES_FILE = DATA_DIR / "rates.json"
+DATA_DIR = _settings.get("data_dir")
+USERS_FILE = _settings.get("users_file")
+PORTFOLIOS_FILE = _settings.get("portfolios_file")
+RATES_FILE = _settings.get("rates_file")
 
 
 # --- Чтение и запись JSON ---
@@ -82,7 +82,9 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-CACHE_TTL_SECONDS = 300  # 5 минут
+CACHE_TTL_SECONDS = _settings.get(
+    "rates_ttl_seconds"
+)  # 5 минут (300) в rates_ttl_seconds
 
 
 def get_rate(from_currency: str, to_currency: str = "USD") -> dict:

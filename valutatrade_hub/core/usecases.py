@@ -1,5 +1,6 @@
 """Бизнес-логика: регистрация, логин, портфель, buy/sell."""
 
+from valutatrade_hub.core.exceptions import InsufficientFundsError
 from valutatrade_hub.core.models import Portfolio, User, Wallet
 from valutatrade_hub.core.utils import (
     PORTFOLIOS_FILE,
@@ -8,6 +9,13 @@ from valutatrade_hub.core.utils import (
     read_json,
     write_json,
 )
+from valutatrade_hub.infra.settings import SettingsLoader
+
+
+def _base_currency() -> str:
+    """Базовая валюта из настроек (по умолчанию USD)."""
+    return SettingsLoader().get("default_base_currency", "USD")
+
 
 # --- Пользователи ---
 
@@ -71,7 +79,7 @@ def get_portfolio(user: User) -> Portfolio:
             return Portfolio.from_dict(data, user=user)
 
     portfolio = Portfolio(user=user)
-    portfolio.add_currency("USD")
+    portfolio.add_currency(_base_currency())
     portfolios.append(portfolio.to_dict())
     _save_portfolios(portfolios)
     return portfolio
@@ -93,10 +101,10 @@ def save_portfolio(portfolio: Portfolio) -> None:
 # --- Курсы ---
 
 
-def get_rate_info(from_currency: str, to_currency: str = "USD") -> dict:
+def get_rate_info(from_currency: str, to_currency: str | None = None) -> dict:
     """Обёртка над utils.get_rate (для CLI)."""
     frm = from_currency.strip().upper()
-    to = to_currency.strip().upper()
+    to = (to_currency or _base_currency()).strip().upper()
     try:
         return get_rate(frm, to)
     except ValueError as exc:
@@ -122,24 +130,23 @@ def buy(user: User, currency_code: str, amount: float) -> dict:
     if code == "USD":
         raise ValueError("Нельзя покупать USD за USD")
 
+    base = _base_currency()
     portfolio = get_portfolio(user)
     try:
-        rate_info = get_rate(code, "USD")
+        rate_info = get_rate(code, base)
     except ValueError as exc:
-        raise ValueError(f"Не удалось получить курс для {code}→USD") from exc
+        raise ValueError(f"Не удалось получить курс для {code}→{base}") from exc
 
     rate = rate_info["rate"]
     cost = amount * rate
 
-    usd_wallet = portfolio.add_currency("USD")
-    if usd_wallet.balance < cost:
-        raise ValueError(
-            f"Недостаточно USD: нужно {cost:.2f}, на балансе {usd_wallet.balance:.2f}"
-        )
+    base_wallet = portfolio.add_currency(base)
+    if base_wallet.balance < cost:
+        raise InsufficientFundsError(base_wallet.balance, cost, base)
 
     target = portfolio.add_currency(code)
     old_balance = target.balance
-    usd_wallet.withdraw(cost)
+    base_wallet.withdraw(cost)
     target.deposit(amount)
     save_portfolio(portfolio)
 
@@ -168,6 +175,7 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
     if code == "USD":
         raise ValueError("Нельзя продавать USD за USD")
 
+    base = _base_currency()
     portfolio = get_portfolio(user)
     if code not in portfolio.wallets:
         raise ValueError(
@@ -176,24 +184,18 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
         )
 
     try:
-        rate_info = get_rate(code, "USD")
+        rate_info = get_rate(code, base)
     except ValueError as exc:
-        raise ValueError(f"Не удалось получить курс для {code}→USD") from exc
+        raise ValueError(f"Не удалось получить курс для {code}→{base}") from exc
 
     rate = rate_info["rate"]
     proceeds = amount * rate
 
     target = portfolio.get_wallet(code)
     old_balance = target.balance
-    usd_wallet = portfolio.add_currency("USD")
-    target.withdraw(amount)  # бросит InsufficientFundsError, если не хватает
-    usd_wallet.deposit(proceeds)
-    save_portfolio(portfolio)
-
-    old_balance = target.balance
-    usd_wallet = portfolio.add_currency("USD")
+    base_wallet = portfolio.add_currency(base)
     target.withdraw(amount)
-    usd_wallet.deposit(proceeds)
+    base_wallet.deposit(proceeds)
     save_portfolio(portfolio)
 
     return {
