@@ -24,11 +24,19 @@ def register(username: str, password: str) -> User:
     """Регистрирует нового пользователя и сохраняет в users.json."""
     users = _load_users()
     if any(u["username"] == username for u in users):
-        raise ValueError(f"Пользователь {username!r} уже существует.")
+        raise ValueError(f"Имя пользователя {username!r} уже занято.")
+
     next_id = max((u["user_id"] for u in users), default=0) + 1
     user = User(user_id=next_id, username=username, password=password)
     users.append(user.to_dict())
     _save_users(users)
+
+    # Пустой портфель (без кошельков)
+    portfolio = Portfolio(user=user)
+    portfolios = _load_portfolios()
+    portfolios.append(portfolio.to_dict())
+    _save_portfolios(portfolios)
+
     return user
 
 
@@ -94,11 +102,6 @@ def get_rate_info(from_currency: str, to_currency: str = "USD") -> dict:
 
 
 def buy(user: User, currency_code: str, amount: float) -> dict:
-    """
-    Покупает amount единиц currency_code за USD.
-    Списывает USD по курсу currency_code – USD.
-    Возвращает словарь с деталями операции.
-    """
     if amount <= 0:
         raise ValueError("Сумма должна быть положительным числом.")
     code = currency_code.strip().upper()
@@ -110,7 +113,7 @@ def buy(user: User, currency_code: str, amount: float) -> dict:
     rate = rate_info["rate"]
     cost = amount * rate
 
-    usd_wallet = portfolio.get_wallet("USD")
+    usd_wallet = portfolio.add_currency("USD")
     if usd_wallet.balance < cost:
         raise ValueError(
             f"Недостаточно USD: нужно {cost:.2f}, на балансе {usd_wallet.balance:.2f}."
@@ -131,11 +134,6 @@ def buy(user: User, currency_code: str, amount: float) -> dict:
 
 
 def sell(user: User, currency_code: str, amount: float) -> dict:
-    """
-    Продаёт amount единиц currency_code за USD.
-    Начисляет USD по курсу currency_code – USD.
-    Возвращает словарь с деталями операции.
-    """
     if amount <= 0:
         raise ValueError("Сумма должна быть положительным числом.")
     code = currency_code.strip().upper()
@@ -153,7 +151,7 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
             f"Недостаточно {code}: нужно {amount}, на балансе {target.balance}."
         )
 
-    usd_wallet = portfolio.get_wallet("USD")
+    usd_wallet = portfolio.add_currency("USD")
     target.withdraw(amount)
     usd_wallet.deposit(proceeds)
     save_portfolio(portfolio)

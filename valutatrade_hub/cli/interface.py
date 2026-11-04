@@ -7,6 +7,38 @@ from prettytable import PrettyTable
 from valutatrade_hub.core import usecases
 from valutatrade_hub.core.models import User
 
+
+def _parse_flags(args: list[str], required: set[str]) -> dict[str, str]:
+    """
+    Парсит аргументы вида --flag value.
+
+    Возвращает словарь {flag: value} без ведущих '--'.
+    Бросает ValueError, если:
+      - аргумент не начинается с '--';
+      - у флага нет значения;
+      - отсутствует обязательный флаг.
+    """
+    flags: dict[str, str] = {}
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if not token.startswith("--"):
+            raise ValueError(f"Ожидался флаг вида --name, получено: {token!r}")
+        name = token[2:]
+        if not name:
+            raise ValueError("Пустое имя флага.")
+        if i + 1 >= len(args):
+            raise ValueError(f"У флага --{name} нет значения.")
+        flags[name] = args[i + 1]
+        i += 2
+
+    missing = required - flags.keys()
+    if missing:
+        names = ", ".join(f"--{m}" for m in sorted(missing))
+        raise ValueError(f"Не хватает обязательных флагов: {names}")
+    return flags
+
+
 HELP = """Доступные команды:
   register <username> <password>     — регистрация
   login <username> <password>        — вход
@@ -33,10 +65,12 @@ def _require_login(session: Session) -> User:
 
 
 def _cmd_register(session: Session, args: list[str]) -> None:
-    if len(args) != 2:
-        raise ValueError("Использование: register <username> <password>")
-    user = usecases.register(args[0], args[1])
-    print(f"Зарегистрирован пользователь #{user.user_id} {user.username!r}.")
+    flags = _parse_flags(args, required={"username", "password"})
+    user = usecases.register(flags["username"], flags["password"])
+    print(
+        f"Пользователь {user.username!r} зарегистрирован (id={user.user_id}). "
+        f"Войдите: login --username {user.username} --password ****"
+    )
 
 
 def _cmd_login(session: Session, args: list[str]) -> None:
