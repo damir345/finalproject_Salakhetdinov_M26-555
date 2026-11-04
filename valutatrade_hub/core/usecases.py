@@ -1,6 +1,6 @@
 """Бизнес-логика: регистрация, логин, портфель, buy/sell."""
 
-from valutatrade_hub.core.models import Portfolio, User
+from valutatrade_hub.core.models import Portfolio, User, Wallet
 from valutatrade_hub.core.utils import (
     PORTFOLIOS_FILE,
     USERS_FILE,
@@ -24,11 +24,19 @@ def register(username: str, password: str) -> User:
     """Регистрирует нового пользователя и сохраняет в users.json."""
     users = _load_users()
     if any(u["username"] == username for u in users):
-        raise ValueError(f"Пользователь {username!r} уже существует.")
+        raise ValueError(f"Имя пользователя {username!r} уже занято.")
+
     next_id = max((u["user_id"] for u in users), default=0) + 1
     user = User(user_id=next_id, username=username, password=password)
     users.append(user.to_dict())
     _save_users(users)
+
+    # Пустой портфель (без кошельков)
+    portfolio = Portfolio(user=user)
+    portfolios = _load_portfolios()
+    portfolios.append(portfolio.to_dict())
+    _save_portfolios(portfolios)
+
     return user
 
 
@@ -40,8 +48,8 @@ def login(username: str, password: str) -> User:
             user = User.from_dict(data)
             if user.verify_password(password):
                 return user
-            raise ValueError("Неверный пароль.")
-    raise ValueError(f"Пользователь {username!r} не найден.")
+            raise ValueError("Неверный пароль")
+    raise ValueError(f"Пользователь {username!r} не найден")
 
 
 # --- Портфели ---
@@ -87,7 +95,14 @@ def save_portfolio(portfolio: Portfolio) -> None:
 
 def get_rate_info(from_currency: str, to_currency: str = "USD") -> dict:
     """Обёртка над utils.get_rate (для CLI)."""
-    return get_rate(from_currency, to_currency)
+    frm = from_currency.strip().upper()
+    to = to_currency.strip().upper()
+    try:
+        return get_rate(frm, to)
+    except ValueError as exc:
+        raise ValueError(
+            f"Курс {frm}→{to} недоступен. Повторите попытку позже."
+        ) from exc
 
 
 # --- Buy / Sell ---
@@ -96,27 +111,34 @@ def get_rate_info(from_currency: str, to_currency: str = "USD") -> dict:
 def buy(user: User, currency_code: str, amount: float) -> dict:
     """
     Покупает amount единиц currency_code за USD.
-    Списывает USD по курсу currency_code – USD.
-    Возвращает словарь с деталями операции.
+
+    Возвращает словарь с деталями операции, включая old_balance/new_balance.
     """
     if amount <= 0:
-        raise ValueError("Сумма должна быть положительным числом.")
+        raise ValueError("'amount' должен быть положительным числом")
     code = currency_code.strip().upper()
+    if not code:
+        raise ValueError("Код валюты не может быть пустым")
     if code == "USD":
-        raise ValueError("Нельзя покупать USD за USD.")
+        raise ValueError("Нельзя покупать USD за USD")
 
     portfolio = get_portfolio(user)
-    rate_info = get_rate(code, "USD")
+    try:
+        rate_info = get_rate(code, "USD")
+    except ValueError as exc:
+        raise ValueError(f"Не удалось получить курс для {code}→USD") from exc
+
     rate = rate_info["rate"]
     cost = amount * rate
 
-    usd_wallet = portfolio.get_wallet("USD")
+    usd_wallet = portfolio.add_currency("USD")
     if usd_wallet.balance < cost:
         raise ValueError(
-            f"Недостаточно USD: нужно {cost:.2f}, на балансе {usd_wallet.balance:.2f}."
+            f"Недостаточно USD: нужно {cost:.2f}, на балансе {usd_wallet.balance:.2f}"
         )
 
     target = portfolio.add_currency(code)
+    old_balance = target.balance
     usd_wallet.withdraw(cost)
     target.deposit(amount)
     save_portfolio(portfolio)
@@ -127,33 +149,49 @@ def buy(user: User, currency_code: str, amount: float) -> dict:
         "amount": amount,
         "rate": rate,
         "cost_usd": cost,
+        "old_balance": old_balance,
+        "new_balance": target.balance,
     }
 
 
 def sell(user: User, currency_code: str, amount: float) -> dict:
     """
     Продаёт amount единиц currency_code за USD.
-    Начисляет USD по курсу currency_code – USD.
-    Возвращает словарь с деталями операции.
+
+    Возвращает словарь с деталями операции, включая old_balance/new_balance.
     """
     if amount <= 0:
-        raise ValueError("Сумма должна быть положительным числом.")
+        raise ValueError("'amount' должен быть положительным числом")
     code = currency_code.strip().upper()
+    if not code:
+        raise ValueError("Код валюты не может быть пустым")
     if code == "USD":
-        raise ValueError("Нельзя продавать USD за USD.")
+        raise ValueError("Нельзя продавать USD за USD")
 
     portfolio = get_portfolio(user)
-    rate_info = get_rate(code, "USD")
+    if code not in portfolio.wallets:
+        raise ValueError(
+            f"У вас нет кошелька {code!r}. "
+            f"Добавьте валюту: она создаётся автоматически при первой покупке."
+        )
+
+    try:
+        rate_info = get_rate(code, "USD")
+    except ValueError as exc:
+        raise ValueError(f"Не удалось получить курс для {code}→USD") from exc
+
     rate = rate_info["rate"]
     proceeds = amount * rate
 
     target = portfolio.get_wallet(code)
     if target.balance < amount:
         raise ValueError(
-            f"Недостаточно {code}: нужно {amount}, на балансе {target.balance}."
+            f"Недостаточно средств: доступно {target.balance:.4f} {code}, "
+            f"требуется {amount:.4f} {code}"
         )
 
-    usd_wallet = portfolio.get_wallet("USD")
+    old_balance = target.balance
+    usd_wallet = portfolio.add_currency("USD")
     target.withdraw(amount)
     usd_wallet.deposit(proceeds)
     save_portfolio(portfolio)
@@ -164,4 +202,15 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
         "amount": amount,
         "rate": rate,
         "proceeds_usd": proceeds,
+        "old_balance": old_balance,
+        "new_balance": target.balance,
     }
+
+
+def get_wallet_value_in(wallet: Wallet, base_currency: str) -> float:
+    """Стоимость одного кошелька в base_currency по текущим курсам."""
+    base = base_currency.strip().upper()
+    if base == wallet.currency_code:
+        return wallet.balance
+    info = get_rate(wallet.currency_code, base)
+    return wallet.balance * info["rate"]

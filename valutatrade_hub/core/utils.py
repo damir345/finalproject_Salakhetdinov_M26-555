@@ -82,12 +82,15 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+CACHE_TTL_SECONDS = 300  # 5 минут
+
+
 def get_rate(from_currency: str, to_currency: str = "USD") -> dict:
     """
     Возвращает курс from_currency → to_currency.
 
-    Сначала ищет в rates.json (кеш). Если нет — берёт из STUB_RATES_USD
-    и сохраняет в кеш.
+    Сначала ищет в rates.json (кеш). Если запись свежая (моложе 5 минут) —
+    возвращает её. Иначе пересчитывает из STUB_RATES_USD и обновляет кеш.
 
     Формат ответа:
         {"from": "EUR", "to": "USD", "rate": 1.08, "updated_at": "..."}
@@ -102,12 +105,19 @@ def get_rate(from_currency: str, to_currency: str = "USD") -> dict:
 
     if key in cache and "rate" in cache[key]:
         entry = cache[key]
-        return {
-            "from": frm,
-            "to": to,
-            "rate": float(entry["rate"]),
-            "updated_at": entry["updated_at"],
-        }
+        try:
+            updated = datetime.fromisoformat(entry["updated_at"])
+        except (KeyError, ValueError):
+            updated = None
+        if updated is not None:
+            age = (datetime.now(timezone.utc) - updated).total_seconds()
+            if age <= CACHE_TTL_SECONDS:
+                return {
+                    "from": frm,
+                    "to": to,
+                    "rate": float(entry["rate"]),
+                    "updated_at": entry["updated_at"],
+                }
 
     if frm not in STUB_RATES_USD or to not in STUB_RATES_USD:
         raise ValueError(f"Нет курса для пары {frm} → {to}.")
