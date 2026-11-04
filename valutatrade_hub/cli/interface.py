@@ -2,10 +2,9 @@
 
 import shlex
 
-from prettytable import PrettyTable
-
 from valutatrade_hub.core import usecases
 from valutatrade_hub.core.models import User
+from valutatrade_hub.core.utils import STUB_RATES_USD
 
 
 def _parse_flags(args: list[str], required: set[str]) -> dict[str, str]:
@@ -60,7 +59,7 @@ class Session:
 
 def _require_login(session: Session) -> User:
     if session.user is None:
-        raise ValueError("Сначала выполните login.")
+        raise ValueError("Сначала выполните login")
     return session.user
 
 
@@ -80,16 +79,36 @@ def _cmd_login(session: Session, args: list[str]) -> None:
     print(f"Вы вошли как {user.username!r}")
 
 
+def _fmt_amount(value: float) -> str:
+    """2 знака для целых значений, 4 — для дробных."""
+    if value == int(value):
+        return f"{value:.2f}"
+    return f"{value:.4f}"
+
+
 def _cmd_show_portfolio(session: Session, args: list[str]) -> None:
     user = _require_login(session)
-    portfolio = usecases.get_portfolio(user)
+    flags = _parse_flags(args, required=set())
+    base = flags.get("base", "USD").strip().upper()
 
-    table = PrettyTable()
-    table.field_names = ["Валюта", "Баланс"]
-    for code, wallet in sorted(portfolio.wallets.items()):
-        table.add_row([code, f"{wallet.balance:.8f}".rstrip("0").rstrip(".")])
-    print(table)
-    print(f"Общая стоимость (USD): {portfolio.get_total_value('USD'):.2f}")
+    if base not in STUB_RATES_USD:
+        raise ValueError(f"Неизвестная базовая валюта {base!r}")
+
+    portfolio = usecases.get_portfolio(user)
+    wallets = portfolio.wallets
+
+    if not wallets:
+        print(f"Портфель пользователя {user.username!r} пуст.")
+        return
+
+    print(f"Портфель пользователя {user.username!r} (база: {base}):")
+    total = 0.0
+    for code, wallet in sorted(wallets.items()):
+        value = usecases.get_wallet_value_in(wallet, base)
+        total += value
+        print(f"- {code}: {_fmt_amount(wallet.balance)}  → {value:.2f} {base}")
+    print("-" * 33)
+    print(f"ИТОГО: {total:.2f} {base}")
 
 
 def _cmd_buy(session: Session, args: list[str]) -> None:

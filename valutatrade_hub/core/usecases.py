@@ -1,6 +1,6 @@
 """Бизнес-логика: регистрация, логин, портфель, buy/sell."""
 
-from valutatrade_hub.core.models import Portfolio, User
+from valutatrade_hub.core.models import Portfolio, User, Wallet
 from valutatrade_hub.core.utils import (
     PORTFOLIOS_FILE,
     USERS_FILE,
@@ -163,3 +163,12 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
         "rate": rate,
         "proceeds_usd": proceeds,
     }
+
+
+def get_wallet_value_in(wallet: Wallet, base_currency: str) -> float:
+    """Стоимость одного кошелька в base_currency по текущим курсам."""
+    base = base_currency.strip().upper()
+    if base == wallet.currency_code:
+        return wallet.balance
+    info = get_rate(wallet.currency_code, base)
+    return wallet.balance * info["rate"]
