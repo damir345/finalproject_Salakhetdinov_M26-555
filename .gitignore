@@ -13,3 +13,7 @@ wheels/
 .ruff_cache/
 
 .DS_Store
+
+# Runtime data (users, portfolios, rates cache)
+data/*.json
+!data/.gitkeep
