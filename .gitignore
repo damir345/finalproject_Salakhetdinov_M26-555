@@ -24,4 +24,4 @@ logs/
 # Parser Service
 data/exchange_rates.json
 .env
-parser.log
+parser.logdemo.cast
