@@ -3,7 +3,9 @@
 import shlex
 
 from valutatrade_hub.core import usecases
+from valutatrade_hub.core.currencies import list_currencies
 from valutatrade_hub.core.exceptions import (
+    ApiRequestError,
     CurrencyNotFoundError,
     InsufficientFundsError,
 )
@@ -127,7 +129,7 @@ def _cmd_buy(session: Session, args: list[str]) -> None:
     except ValueError:
         raise ValueError(f"'amount' должен быть числом: {flags['amount']!r}") from None
 
-    result = usecases.sell(user.user_id, code, amount)
+    result = usecases.buy(user.user_id, code, amount)
 
     print(
         f"Покупка выполнена: {result['amount']:.4f} "
@@ -228,7 +230,11 @@ def run() -> None:
             print(f"Ошибка: {exc}")
         except CurrencyNotFoundError as exc:
             print(f"Ошибка: {exc}")
-            print("Подсказка: используйте 'get-rate --help' или проверьте код валюты.")
+            codes = ", ".join(c.code for c in list_currencies())
+            print(f"Поддерживаемые коды: {codes}")
+        except ApiRequestError as exc:
+            print(f"Ошибка: {exc}")
+            print("Подсказка: повторите позже или проверьте сеть.")
         except ValueError as exc:
             print(f"Ошибка: {exc}")
         except Exception as exc:  # noqa: BLE001

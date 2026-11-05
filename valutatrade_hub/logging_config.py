@@ -46,11 +46,12 @@ class JsonFormatter(logging.Formatter):
 
 def setup_logging(level: int = logging.INFO) -> None:
     """
-    Настраивает корневой логгер: файл с ротацией + консоль.
+    Настраивает корневой логгер: файл с ротацией.
 
     Ротация: 1 МБ на файл, 3 архивных копии, logs/actions.log.
     Формат: JSON (зафиксировано).
     Уровень: INFO (DEBUG для отладки).
+    Консольный вывод отключён — CLI сам печатает сообщения пользователю.
     """
     settings = SettingsLoader()
     logs_dir: Path = settings.get("logs_dir")
@@ -76,8 +77,3 @@ def setup_logging(level: int = logging.INFO) -> None:
     )
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
-
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(logging.WARNING)
-    root.addHandler(console_handler)
