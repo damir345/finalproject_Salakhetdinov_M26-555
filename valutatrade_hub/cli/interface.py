@@ -127,7 +127,7 @@ def _cmd_buy(session: Session, args: list[str]) -> None:
     except ValueError:
         raise ValueError(f"'amount' должен быть числом: {flags['amount']!r}") from None
 
-    result = usecases.buy(user, code, amount)
+    result = usecases.sell(user.user_id, code, amount)
 
     print(
         f"Покупка выполнена: {result['amount']:.4f} "
@@ -151,7 +151,7 @@ def _cmd_sell(session: Session, args: list[str]) -> None:
     except ValueError:
         raise ValueError(f"'amount' должен быть числом: {flags['amount']!r}") from None
 
-    result = usecases.sell(user, code, amount)
+    result = usecases.sell(user.user_id, code, amount)
 
     print(
         f"Продажа выполнена: {result['amount']:.4f} "

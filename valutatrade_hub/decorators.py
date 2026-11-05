@@ -65,6 +65,10 @@ def log_action(
             extra = dict(extra_base)
             extra["result"] = "OK"
             if isinstance(result, dict):
+                if "user" in result:
+                    extra.setdefault("user", result["user"])
+                if "user_id" in result:
+                    extra.setdefault("user_id", result["user_id"])
                 extra["rate"] = result.get("rate")
                 extra["base"] = result.get("base")
                 if verbose:

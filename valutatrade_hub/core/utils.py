@@ -7,6 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from valutatrade_hub.core.currencies import get_currency
+from valutatrade_hub.core.exceptions import CurrencyNotFoundError
+from valutatrade_hub.infra.database import DatabaseManager
 from valutatrade_hub.infra.settings import SettingsLoader
 
 # --- Хеширование пароля ---
@@ -25,6 +28,7 @@ def hash_password(password: str, salt: str) -> str:
 # --- Пути к файлам данных ---
 
 _settings = SettingsLoader()
+_db = DatabaseManager()
 
 DATA_DIR = _settings.get("data_dir")
 USERS_FILE = _settings.get("users_file")
@@ -82,9 +86,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
-CACHE_TTL_SECONDS = _settings.get(
-    "rates_ttl_seconds"
-)  # 5 минут (300) в rates_ttl_seconds
+CACHE_TTL_SECONDS = _settings.get("rates_ttl_seconds", 300)
 
 
 def get_rate(from_currency: str, to_currency: str = "USD") -> dict:
@@ -100,10 +102,14 @@ def get_rate(from_currency: str, to_currency: str = "USD") -> dict:
     frm = from_currency.strip().upper()
     to = to_currency.strip().upper()
     if not frm or not to:
-        raise ValueError("Коды валют не могут быть пустыми.")
+        raise CurrencyNotFoundError(from_currency or to_currency)
+
+    # Валидация через реестр валют: неизвестный код → CurrencyNotFoundError
+    get_currency(frm)
+    get_currency(to)
 
     key = f"{frm}_{to}"
-    cache = read_json(RATES_FILE, default={})
+    cache = _db.load_rates()
 
     if key in cache and "rate" in cache[key]:
         entry = cache[key]
@@ -129,6 +135,6 @@ def get_rate(from_currency: str, to_currency: str = "USD") -> dict:
     cache[key] = {"rate": rate, "updated_at": updated_at}
     cache["source"] = "StubRates"
     cache["last_refresh"] = updated_at
-    write_json(RATES_FILE, cache)
+    _db.save_rates(cache)
 
     return {"from": frm, "to": to, "rate": rate, "updated_at": updated_at}
