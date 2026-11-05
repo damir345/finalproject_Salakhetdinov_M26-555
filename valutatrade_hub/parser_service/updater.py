@@ -65,7 +65,7 @@ class RatesUpdater:
 
             entries = [
                 self.storage.make_history_entry(
-                    pair, rate, source_label, {"status_code": 200}
+                    pair, rate, source_label, self._make_meta(pair)
                 )
                 for pair, rate in rates.items()
             ]
@@ -83,6 +83,15 @@ class RatesUpdater:
             "errors": errors,
             "last_refresh": last_refresh,
         }
+
+    def _make_meta(self, pair: str) -> dict:
+        """Метаданные записи истории: status_code + raw_id для крипто."""
+        meta: dict = {"status_code": 200}
+        code = pair.split("_", 1)[0]
+        raw_id = self.config.CRYPTO_ID_MAP.get(code)
+        if raw_id:
+            meta["raw_id"] = raw_id
+        return meta
 
     @staticmethod
     def _client_name(client: BaseApiClient) -> str:

@@ -78,8 +78,14 @@ class ParserStorage:
         cache = self.load_rates()
         pairs: dict[str, dict] = cache.get("pairs", {})
         now = _now_iso()
+        updated = 0
         for pair, rate in new_pairs.items():
+            existing = pairs.get(pair)
+            if existing and existing.get("updated_at", "") >= now:
+                # Существующая запись не старее новой — не перезаписываем
+                continue
             pairs[pair] = {"rate": rate, "updated_at": now, "source": source}
+            updated += 1
         cache["pairs"] = pairs
         cache["last_refresh"] = now
         _atomic_write(self.rates_path, cache)
