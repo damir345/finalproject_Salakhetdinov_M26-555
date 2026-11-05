@@ -96,6 +96,10 @@ def get_rate(from_currency: str, to_currency: str = "USD") -> dict:
     Сначала ищет в rates.json (кеш). Если запись свежая (моложе 5 минут) —
     возвращает её. Иначе пересчитывает из STUB_RATES_USD и обновляет кеш.
 
+    Поддерживает оба формата rates.json:
+      - плоский:  {"EUR_USD": {"rate": ...}}
+      - с обёрткой: {"pairs": {"EUR_USD": {...}}, "last_refresh": ...}
+
     Формат ответа:
         {"from": "EUR", "to": "USD", "rate": 1.08, "updated_at": "..."}
     """
@@ -110,9 +114,10 @@ def get_rate(from_currency: str, to_currency: str = "USD") -> dict:
 
     key = f"{frm}_{to}"
     cache = _db.load_rates()
+    pairs = cache.get("pairs", cache)
 
-    if key in cache and "rate" in cache[key]:
-        entry = cache[key]
+    if key in pairs and "rate" in pairs[key]:
+        entry = pairs[key]
         try:
             updated = datetime.fromisoformat(entry["updated_at"])
         except (KeyError, ValueError):
@@ -132,8 +137,9 @@ def get_rate(from_currency: str, to_currency: str = "USD") -> dict:
 
     rate = STUB_RATES_USD[frm] / STUB_RATES_USD[to]
     updated_at = _now_iso()
-    cache[key] = {"rate": rate, "updated_at": updated_at}
-    cache["source"] = "StubRates"
+    pairs = cache.get("pairs", {})
+    pairs[key] = {"rate": rate, "updated_at": updated_at}
+    cache["pairs"] = pairs
     cache["last_refresh"] = updated_at
     _db.save_rates(cache)
 
