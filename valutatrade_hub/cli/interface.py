@@ -11,6 +11,9 @@ from valutatrade_hub.core.exceptions import (
 )
 from valutatrade_hub.core.models import User
 from valutatrade_hub.core.utils import STUB_RATES_USD
+from valutatrade_hub.parser_service.config import ParserConfig
+from valutatrade_hub.parser_service.storage import ParserStorage
+from valutatrade_hub.parser_service.updater import RatesUpdater
 
 
 def _parse_flags(args: list[str], required: set[str]) -> dict[str, str]:
@@ -51,6 +54,8 @@ HELP = """Доступные команды:
   buy <currency> <amount>            — купить валюту за USD
   sell <currency> <amount>           — продать валюту за USD
   get-rate <from> [to]               — курс (по умолчанию к USD)
+  update-rates [--source coingecko|exchangerate]  — обновить курсы из API
+  show-rates [--currency CODE] [--top N] [--base CODE] — курсы из кеша
   help                               — эта справка
   exit                               — выход
 """
@@ -181,6 +186,62 @@ def _cmd_get_rate(session: Session, args: list[str]) -> None:
     print(f"Обратный курс {reverse['from']}→{reverse['to']}: {reverse['rate']:.2f}")
 
 
+def _cmd_update_rates(session: Session, args: list[str]) -> None:
+    flags = _parse_flags(args, required=set())
+    source = flags.get("source")
+    if source and source not in ("coingecko", "exchangerate"):
+        raise ValueError("--source должен быть 'coingecko' или 'exchangerate'")
+    config = ParserConfig()
+    storage = ParserStorage(config)
+    updater = RatesUpdater(config, storage)
+    result = updater.run_update(source=source)
+    if result["errors"]:
+        print("Update completed with errors:")
+        for err in result["errors"]:
+            print(f"  - {err}")
+    print(
+        f"Update successful. Total rates updated: {result['updated']}. "
+        f"Last refresh: {result['last_refresh']}"
+    )
+
+
+def _cmd_show_rates(session: Session, args: list[str]) -> None:
+    flags = _parse_flags(args, required=set())
+    currency = flags.get("currency")
+    base = flags.get("base")
+    top_raw = flags.get("top")
+    top = int(top_raw) if top_raw else None
+
+    config = ParserConfig()
+    storage = ParserStorage(config)
+    cache = storage.load_rates()
+    pairs = cache.get("pairs", {})
+    last_refresh = cache.get("last_refresh") or "—"
+
+    if not pairs:
+        raise ValueError(
+            "Локальный кеш курсов пуст. Выполните 'update-rates', "
+            "чтобы загрузить данные."
+        )
+
+    items = list(pairs.items())
+    if currency:
+        code = currency.strip().upper()
+        items = [(p, v) for p, v in items if p.startswith(f"{code}_")]
+        if not items:
+            raise ValueError(f"Курс для {code!r} не найден в кеше.")
+    if base:
+        b = base.strip().upper()
+        items = [(p, v) for p, v in items if p.endswith(f"_{b}")]
+    if top:
+        items.sort(key=lambda kv: kv[1]["rate"], reverse=True)
+        items = items[:top]
+
+    print(f"Rates from cache (updated at {last_refresh}):")
+    for pair, payload in items:
+        print(f"- {pair}: {payload['rate']}")
+
+
 COMMANDS = {
     "register": _cmd_register,
     "login": _cmd_login,
@@ -188,6 +249,8 @@ COMMANDS = {
     "buy": _cmd_buy,
     "sell": _cmd_sell,
     "get-rate": _cmd_get_rate,
+    "update-rates": _cmd_update_rates,
+    "show-rates": _cmd_show_rates,
 }
 
 
