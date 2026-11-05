@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from valutatrade_hub.core.utils import generate_salt, hash_password
+from valutatrade_hub.core.exceptions import InsufficientFundsError
+from valutatrade_hub.core.utils import STUB_RATES_USD, generate_salt, hash_password
 
 
 class User:
@@ -172,9 +173,7 @@ class Wallet:
         """Снимает amount, если баланс позволяет."""
         self._validate_amount(amount)
         if amount > self._balance:
-            raise ValueError(
-                f"Недостаточно средств: баланс {self._balance}, запрошено {amount}."
-            )
+            raise InsufficientFundsError(self._balance, amount, self._currency_code)
         self.balance = self._balance - amount
 
     def get_balance_info(self) -> dict:
@@ -214,16 +213,6 @@ class Wallet:
             raise ValueError(f"В данных кошелька нет поля {exc}") from exc
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Некорректные данные кошелька: {exc}") from exc
-
-
-# Фиктивные курсы относительно USD (1 единица валюты = X USD).
-EXCHANGE_RATES: dict[str, float] = {
-    "USD": 1.0,
-    "EUR": 1.08,
-    "GBP": 1.27,
-    "BTC": 60000.0,
-    "ETH": 3000.0,
-}
 
 
 class Portfolio:
@@ -290,19 +279,19 @@ class Portfolio:
         """
         Возвращает общую стоимость всех кошельков в base_currency.
 
-        Курсы берутся из EXCHANGE_RATES (относительно USD).
+        Курсы берутся из STUB_RATES_USD.
         Если курса нет — ValueError.
         """
         base = base_currency.strip().upper()
-        if base not in EXCHANGE_RATES:
+        if base not in STUB_RATES_USD:
             raise ValueError(f"Нет курса для базовой валюты {base!r}.")
 
-        base_rate = EXCHANGE_RATES[base]
+        base_rate = STUB_RATES_USD[base]
         total = 0.0
         for code, wallet in self._wallets.items():
-            if code not in EXCHANGE_RATES:
+            if code not in STUB_RATES_USD:
                 raise ValueError(f"Нет курса для валюты {code!r}.")
-            total += wallet.balance * EXCHANGE_RATES[code] / base_rate
+            total += wallet.balance * STUB_RATES_USD[code] / base_rate
         return total
 
     # --- Сериализация ---

@@ -1,25 +1,41 @@
 """Бизнес-логика: регистрация, логин, портфель, buy/sell."""
 
+from valutatrade_hub.core.currencies import get_currency
+from valutatrade_hub.core.exceptions import InsufficientFundsError
 from valutatrade_hub.core.models import Portfolio, User, Wallet
-from valutatrade_hub.core.utils import (
-    PORTFOLIOS_FILE,
-    USERS_FILE,
-    get_rate,
-    read_json,
-    write_json,
-)
+from valutatrade_hub.core.utils import get_rate
+from valutatrade_hub.decorators import log_action
+from valutatrade_hub.infra.database import DatabaseManager
+from valutatrade_hub.infra.settings import SettingsLoader
+
+_db = DatabaseManager()
+
+
+def _base_currency() -> str:
+    """Базовая валюта из настроек (по умолчанию USD)."""
+    return SettingsLoader().get("default_base_currency", "USD")
+
 
 # --- Пользователи ---
 
 
 def _load_users() -> list[dict]:
-    return read_json(USERS_FILE, default=[])
+    return _db.load_users()
 
 
 def _save_users(users: list[dict]) -> None:
-    write_json(USERS_FILE, users)
+    _db.save_users(users)
 
 
+def _get_user_by_id(user_id: int) -> User:
+    """Загружает пользователя по user_id из users.json."""
+    for data in _load_users():
+        if data["user_id"] == user_id:
+            return User.from_dict(data)
+    raise ValueError(f"Пользователь с id={user_id} не найден")
+
+
+@log_action(action="REGISTER")
 def register(username: str, password: str) -> User:
     """Регистрирует нового пользователя и сохраняет в users.json."""
     users = _load_users()
@@ -40,6 +56,7 @@ def register(username: str, password: str) -> User:
     return user
 
 
+@log_action(action="LOGIN")
 def login(username: str, password: str) -> User:
     """Проверяет логин/пароль и возвращает User."""
     users = _load_users()
@@ -56,11 +73,11 @@ def login(username: str, password: str) -> User:
 
 
 def _load_portfolios() -> list[dict]:
-    return read_json(PORTFOLIOS_FILE, default=[])
+    return _db.load_portfolios()
 
 
 def _save_portfolios(portfolios: list[dict]) -> None:
-    write_json(PORTFOLIOS_FILE, portfolios)
+    _db.save_portfolios(portfolios)
 
 
 def get_portfolio(user: User) -> Portfolio:
@@ -71,7 +88,7 @@ def get_portfolio(user: User) -> Portfolio:
             return Portfolio.from_dict(data, user=user)
 
     portfolio = Portfolio(user=user)
-    portfolio.add_currency("USD")
+    portfolio.add_currency(_base_currency())
     portfolios.append(portfolio.to_dict())
     _save_portfolios(portfolios)
     return portfolio
@@ -93,24 +110,22 @@ def save_portfolio(portfolio: Portfolio) -> None:
 # --- Курсы ---
 
 
-def get_rate_info(from_currency: str, to_currency: str = "USD") -> dict:
+def get_rate_info(from_currency: str, to_currency: str | None = None) -> dict:
     """Обёртка над utils.get_rate (для CLI)."""
     frm = from_currency.strip().upper()
-    to = to_currency.strip().upper()
-    try:
-        return get_rate(frm, to)
-    except ValueError as exc:
-        raise ValueError(
-            f"Курс {frm}→{to} недоступен. Повторите попытку позже."
-        ) from exc
+    to = (to_currency or _base_currency()).strip().upper()
+    get_currency(frm)  # CurrencyNotFoundError, если неизвестен
+    get_currency(to)
+    return get_rate(frm, to)
 
 
 # --- Buy / Sell ---
 
 
-def buy(user: User, currency_code: str, amount: float) -> dict:
+@log_action(action="BUY", verbose=True)
+def buy(user_id: int, currency_code: str, amount: float) -> dict:
     """
-    Покупает amount единиц currency_code за USD.
+    Покупает amount единиц currency_code за базовую валюту.
 
     Возвращает словарь с деталями операции, включая old_balance/new_balance.
     """
@@ -119,44 +134,45 @@ def buy(user: User, currency_code: str, amount: float) -> dict:
     code = currency_code.strip().upper()
     if not code:
         raise ValueError("Код валюты не может быть пустым")
-    if code == "USD":
-        raise ValueError("Нельзя покупать USD за USD")
+    get_currency(code)  # CurrencyNotFoundError, если неизвестен
+    base = _base_currency()
+    if code == base:
+        raise ValueError(f"Нельзя покупать {base} за {base}")
 
+    user = _get_user_by_id(user_id)
     portfolio = get_portfolio(user)
-    try:
-        rate_info = get_rate(code, "USD")
-    except ValueError as exc:
-        raise ValueError(f"Не удалось получить курс для {code}→USD") from exc
-
+    rate_info = get_rate(code, base)
     rate = rate_info["rate"]
     cost = amount * rate
 
-    usd_wallet = portfolio.add_currency("USD")
-    if usd_wallet.balance < cost:
-        raise ValueError(
-            f"Недостаточно USD: нужно {cost:.2f}, на балансе {usd_wallet.balance:.2f}"
-        )
+    base_wallet = portfolio.add_currency(base)
+    if base_wallet.balance < cost:
+        raise InsufficientFundsError(base_wallet.balance, cost, base)
 
     target = portfolio.add_currency(code)
     old_balance = target.balance
-    usd_wallet.withdraw(cost)
+    base_wallet.withdraw(cost)
     target.deposit(amount)
     save_portfolio(portfolio)
 
     return {
         "operation": "buy",
+        "user": user.username,
+        "user_id": user_id,
         "currency_code": code,
         "amount": amount,
         "rate": rate,
+        "base": base,
         "cost_usd": cost,
         "old_balance": old_balance,
         "new_balance": target.balance,
     }
 
 
-def sell(user: User, currency_code: str, amount: float) -> dict:
+@log_action(action="SELL", verbose=True)
+def sell(user_id: int, currency_code: str, amount: float) -> dict:
     """
-    Продаёт amount единиц currency_code за USD.
+    Продаёт amount единиц currency_code за базовую валюту.
 
     Возвращает словарь с деталями операции, включая old_balance/new_balance.
     """
@@ -165,9 +181,12 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
     code = currency_code.strip().upper()
     if not code:
         raise ValueError("Код валюты не может быть пустым")
-    if code == "USD":
-        raise ValueError("Нельзя продавать USD за USD")
+    get_currency(code)  # CurrencyNotFoundError, если неизвестен
+    base = _base_currency()
+    if code == base:
+        raise ValueError(f"Нельзя продавать {base} за {base}")
 
+    user = _get_user_by_id(user_id)
     portfolio = get_portfolio(user)
     if code not in portfolio.wallets:
         raise ValueError(
@@ -175,32 +194,25 @@ def sell(user: User, currency_code: str, amount: float) -> dict:
             f"Добавьте валюту: она создаётся автоматически при первой покупке."
         )
 
-    try:
-        rate_info = get_rate(code, "USD")
-    except ValueError as exc:
-        raise ValueError(f"Не удалось получить курс для {code}→USD") from exc
-
+    rate_info = get_rate(code, base)
     rate = rate_info["rate"]
     proceeds = amount * rate
 
     target = portfolio.get_wallet(code)
-    if target.balance < amount:
-        raise ValueError(
-            f"Недостаточно средств: доступно {target.balance:.4f} {code}, "
-            f"требуется {amount:.4f} {code}"
-        )
-
     old_balance = target.balance
-    usd_wallet = portfolio.add_currency("USD")
+    base_wallet = portfolio.add_currency(base)
     target.withdraw(amount)
-    usd_wallet.deposit(proceeds)
+    base_wallet.deposit(proceeds)
     save_portfolio(portfolio)
 
     return {
         "operation": "sell",
+        "user": user.username,
+        "user_id": user_id,
         "currency_code": code,
         "amount": amount,
         "rate": rate,
+        "base": base,
         "proceeds_usd": proceeds,
         "old_balance": old_balance,
         "new_balance": target.balance,
